@@ -1,5 +1,5 @@
 .env
-*.json
+metadata.json
 !package.json
 __pycache__/
 *.pyc
