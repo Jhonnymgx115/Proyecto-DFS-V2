@@ -186,3 +186,42 @@ def rmdir(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path is not a directory")
     store.delete_file(current_user, dirname)
     return {"message": f"Directory '{dirname}' removed"}
+
+
+@app.post("/blocks/report")
+def report_blocks(body: DataNodeReport) -> dict[str, str | int]:
+    now = time.time()
+    store.register_datanode(body.datanode_url)
+    store.update_datanode_blocks(body.datanode_url, body.block_ids, now)
+
+    known_blocks = set(store.blocks.keys())
+    for block_id in body.block_ids:
+        if block_id not in known_blocks:
+            logger.warning(
+                "Orphan block reported by %s: %s",
+                body.datanode_url,
+                block_id,
+            )
+
+    return {
+        "message": "Block report received",
+        "blocks_reported": len(body.block_ids),
+    }
+
+
+@app.get("/datanodes/status")
+def datanodes_status() -> dict[str, list[dict]]:
+    now = time.time()
+    nodes = []
+    for url, info in store.datanodes.items():
+        last_seen = info.get("last_seen", 0)
+        alive = now - last_seen < 60
+        nodes.append(
+            {
+                "url": url,
+                "alive": alive,
+                "last_seen": last_seen,
+                "block_count": len(info.get("blocks", [])),
+            }
+        )
+    return {"datanodes": nodes}
