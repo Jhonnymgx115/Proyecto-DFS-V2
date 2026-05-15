@@ -13,3 +13,4 @@ REPLICATION_FACTOR: int = int(os.getenv("REPLICATION_FACTOR", "2"))
 METADATA_FILE: str = os.getenv("METADATA_FILE", "namenode_metadata.json")
 
 BLOCK_SIZE_BYTES: int = BLOCK_SIZE_MB * 1024 * 1024
+DATANODE_TTL_SECONDS: int = int(os.getenv("DATANODE_TTL_SECOND" , "60"))
