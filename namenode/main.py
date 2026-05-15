@@ -1,7 +1,9 @@
 import logging
 import time
+from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 
 from namenode import auth, block_manager
 from namenode.config import REPLICATION_FACTOR
@@ -17,10 +19,45 @@ from namenode.schemas import (
     UserLogin,
 )
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 logger = logging.getLogger("namenode.main")
 
 app = FastAPI(title="MiniHDFS NameNode")
 store = MetadataStore()
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": exc.detail, "detail": str(exc.detail)},
+        )
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"error": "Internal server error", "detail": str(exc)},
+    )
+
+
+def _count_alive_datanodes() -> int:
+    now = time.time()
+    return sum(
+        1
+        for info in store.datanodes.values()
+        if now - info.get("last_seen", 0) < 60
+    )
+
+
+@app.get("/health")
+def health() -> dict[str, Any]:
+    alive = _count_alive_datanodes()
+    logger.info("Health check: datanodes_alive=%d", alive)
+    return {"status": "ok", "datanodes_alive": alive}
 
 
 @app.post("/auth/register", status_code=status.HTTP_201_CREATED)
@@ -31,6 +68,7 @@ def register(user: UserCreate) -> dict[str, str]:
             detail="Username already registered",
         )
     store.add_user(user.username, auth.hash_password(user.password))
+    logger.info("User registered: %s", user.username)
     return {"username": user.username, "message": "User registered successfully"}
 
 
@@ -43,6 +81,7 @@ def login(credentials: UserLogin) -> Token:
             detail="Invalid username or password",
         )
     token = auth.create_token(credentials.username)
+    logger.info("User logged in: %s", credentials.username)
     return Token(access_token=token)
 
 
@@ -77,6 +116,13 @@ def put_file(
             assignment.block_id,
             [assignment.primary_url, assignment.secondary_url],
         )
+        logger.info(
+            "Block assigned: block_id=%s primary=%s secondary=%s size=%d",
+            assignment.block_id,
+            assignment.primary_url,
+            assignment.secondary_url,
+            assignment.size_bytes,
+        )
 
     record = {
         "size": body.file_size,
@@ -86,6 +132,13 @@ def put_file(
         "is_directory": False,
     }
     store.add_file(current_user, body.filename, record)
+    logger.info(
+        "File put planned: user=%s filename=%s size=%d blocks=%d",
+        current_user,
+        body.filename,
+        body.file_size,
+        len(plan),
+    )
 
     return BlockPlan(
         filename=body.filename,
@@ -112,6 +165,7 @@ def get_file(
             {"block_id": block_id, "replicas": urls, "block_index": block_index}
         )
 
+    logger.info("File get: user=%s filename=%s blocks=%d", current_user, filename, len(blocks_response))
     return {
         "filename": filename,
         "size": record.get("size", 0),
@@ -122,6 +176,7 @@ def get_file(
 @app.get("/files/ls", response_model=list[FileInfo])
 def list_files(current_user: str = Depends(auth.get_current_user)) -> list[FileInfo]:
     entries = store.list_files(current_user)
+    logger.info("File list: user=%s count=%d", current_user, len(entries))
     return [
         FileInfo(
             filename=entry["filename"],
@@ -149,6 +204,7 @@ def remove_file(
         )
     if not store.delete_file(current_user, filename):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    logger.info("File removed: user=%s filename=%s", current_user, filename)
     return {"message": f"File '{filename}' removed"}
 
 
@@ -171,6 +227,7 @@ def mkdir(
             "is_directory": True,
         },
     )
+    logger.info("Directory created: user=%s dirname=%s", current_user, body.dirname)
     return {"message": f"Directory '{body.dirname}' created"}
 
 
@@ -185,6 +242,7 @@ def rmdir(
     if not record.get("is_directory"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path is not a directory")
     store.delete_file(current_user, dirname)
+    logger.info("Directory removed: user=%s dirname=%s", current_user, dirname)
     return {"message": f"Directory '{dirname}' removed"}
 
 
@@ -193,6 +251,11 @@ def report_blocks(body: DataNodeReport) -> dict[str, str | int]:
     now = time.time()
     store.register_datanode(body.datanode_url)
     store.update_datanode_blocks(body.datanode_url, body.block_ids, now)
+    logger.info(
+        "DataNode registered/reported: url=%s blocks=%d",
+        body.datanode_url,
+        len(body.block_ids),
+    )
 
     known_blocks = set(store.blocks.keys())
     for block_id in body.block_ids:
@@ -255,4 +318,5 @@ def confirm_upload(
 
     record["status"] = "ready"
     store.add_file(current_user, filename, record)
+    logger.info("File confirmed ready: user=%s filename=%s", current_user, filename)
     return {"message": f"File '{filename}' is ready", "status": "ready"}
