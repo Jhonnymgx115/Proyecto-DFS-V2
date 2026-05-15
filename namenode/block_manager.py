@@ -6,6 +6,7 @@ from uuid import uuid4
 from fastapi import HTTPException, status
 
 from namenode.config import BLOCK_SIZE_BYTES, REPLICATION_FACTOR
+from namenode.metadata import MetadataStore
 from namenode.schemas import BlockAssignment
 
 logger = logging.getLogger("namenode.block_manager")
@@ -67,3 +68,35 @@ def compute_block_plan(
         )
 
     return assignments
+
+
+def resolve_block_locations(block_id: str, metadata: MetadataStore) -> list[str]:
+    locations = metadata.get_block_locations(block_id)
+    if not locations:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Block not found: {block_id}",
+        )
+
+    now = time.time()
+    alive = {
+        url
+        for url, info in metadata.datanodes.items()
+        if now - info.get("last_seen", 0) < DATANODE_TTL_SECONDS
+    }
+    filtered = [url for url in locations if url in alive]
+    if not filtered:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"No alive replicas for block: {block_id}",
+        )
+
+    primary = locations[0]
+    ordered = [primary] + [url for url in filtered if url != primary]
+    seen: set[str] = set()
+    result: list[str] = []
+    for url in ordered:
+        if url not in seen:
+            seen.add(url)
+            result.append(url)
+    return result
