@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
 from namenode import auth, block_manager
-from namenode.config import REPLICATION_FACTOR
+from namenode.config import DATANODE_TTL_SECONDS, REPLICATION_FACTOR
 from namenode.metadata import MetadataStore
 from namenode.schemas import (
     BlockPlan,
