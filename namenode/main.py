@@ -92,3 +92,97 @@ def put_file(
         total_blocks=len(plan),
         block_plan=plan,
     )
+
+
+@app.get("/files/get/{filename}")
+def get_file(
+    filename: str,
+    current_user: str = Depends(auth.get_current_user),
+) -> dict:
+    record = store.get_file(current_user, filename)
+    if record is None or record.get("status") == "deleted":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    if record.get("is_directory"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path is a directory")
+
+    blocks_response = []
+    for block_id in record.get("blocks", []):
+        urls = store.get_block_locations(block_id)
+        blocks_response.append(
+            {"block_id": block_id, "replicas": urls, "block_index": record["blocks"].index(block_id)}
+        )
+
+    return {
+        "filename": filename,
+        "size": record.get("size", 0),
+        "blocks": blocks_response,
+    }
+
+
+@app.get("/files/ls", response_model=list[FileInfo])
+def list_files(current_user: str = Depends(auth.get_current_user)) -> list[FileInfo]:
+    entries = store.list_files(current_user)
+    return [
+        FileInfo(
+            filename=entry["filename"],
+            size=entry.get("size", 0),
+            block_count=entry.get("block_count", 0),
+            status=entry.get("status", "unknown"),
+            is_directory=entry.get("is_directory", False),
+        )
+        for entry in entries
+    ]
+
+
+@app.delete("/files/rm/{filename}")
+def remove_file(
+    filename: str,
+    current_user: str = Depends(auth.get_current_user),
+) -> dict[str, str]:
+    record = store.get_file(current_user, filename)
+    if record is None or record.get("status") == "deleted":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    if record.get("is_directory"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot remove directory with rm; use rmdir",
+        )
+    if not store.delete_file(current_user, filename):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    return {"message": f"File '{filename}' removed"}
+
+
+@app.post("/files/mkdir", status_code=status.HTTP_201_CREATED)
+def mkdir(
+    body: DirectoryRequest,
+    current_user: str = Depends(auth.get_current_user),
+) -> dict[str, str]:
+    existing = store.get_file(current_user, body.dirname)
+    if existing is not None and existing.get("status") != "deleted":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Path already exists")
+    store.add_file(
+        current_user,
+        body.dirname,
+        {
+            "size": 0,
+            "blocks": [],
+            "block_count": 0,
+            "status": "ready",
+            "is_directory": True,
+        },
+    )
+    return {"message": f"Directory '{body.dirname}' created"}
+
+
+@app.delete("/files/rmdir/{dirname}")
+def rmdir(
+    dirname: str,
+    current_user: str = Depends(auth.get_current_user),
+) -> dict[str, str]:
+    record = store.get_file(current_user, dirname)
+    if record is None or record.get("status") == "deleted":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Directory not found")
+    if not record.get("is_directory"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path is not a directory")
+    store.delete_file(current_user, dirname)
+    return {"message": f"Directory '{dirname}' removed"}
