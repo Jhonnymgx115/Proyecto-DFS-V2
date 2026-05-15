@@ -49,7 +49,7 @@ def _count_alive_datanodes() -> int:
     return sum(
         1
         for info in store.datanodes.values()
-        if now - info.get("last_seen", 0) < 60
+        if now - info.get("last_seen", 0) < DATANODE_TTL_SECONDS
     )
 
 
@@ -278,7 +278,7 @@ def datanodes_status() -> dict[str, list[dict]]:
     nodes = []
     for url, info in store.datanodes.items():
         last_seen = info.get("last_seen", 0)
-        alive = now - last_seen < 60
+        alive = now - last_seen < DATANODE_TTL_SECONDS
         nodes.append(
             {
                 "url": url,

@@ -1,6 +1,7 @@
 import logging
 import math
 import time
+from namenode.config import DATANODE_TTL_SECONDS
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -11,7 +12,6 @@ from namenode.schemas import BlockAssignment
 
 logger = logging.getLogger("namenode.block_manager")
 
-DATANODE_TTL_SECONDS = 60
 
 
 def _alive_datanodes(datanodes: dict[str, dict]) -> list[str]:
