@@ -106,10 +106,10 @@ def get_file(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path is a directory")
 
     blocks_response = []
-    for block_id in record.get("blocks", []):
-        urls = store.get_block_locations(block_id)
+    for block_index, block_id in enumerate(record.get("blocks", [])):
+        urls = block_manager.resolve_block_locations(block_id, store)
         blocks_response.append(
-            {"block_id": block_id, "replicas": urls, "block_index": record["blocks"].index(block_id)}
+            {"block_id": block_id, "replicas": urls, "block_index": block_index}
         )
 
     return {
@@ -225,3 +225,34 @@ def datanodes_status() -> dict[str, list[dict]]:
             }
         )
     return {"datanodes": nodes}
+
+
+@app.post("/files/confirm/{filename}")
+def confirm_upload(
+    filename: str,
+    current_user: str = Depends(auth.get_current_user),
+) -> dict[str, str]:
+    record = store.get_file(current_user, filename)
+    if record is None or record.get("status") == "deleted":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    if record.get("status") != "uploading":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File is not uploading (status={record.get('status')})",
+        )
+
+    block_ids = record.get("blocks", [])
+    for block_id in block_ids:
+        replica_count = 0
+        for _url, info in store.datanodes.items():
+            if block_id in info.get("blocks", []):
+                replica_count += 1
+        if replica_count < REPLICATION_FACTOR:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Incomplete replication for block {block_id}: {replica_count}/{REPLICATION_FACTOR}",
+            )
+
+    record["status"] = "ready"
+    store.add_file(current_user, filename, record)
+    return {"message": f"File '{filename}' is ready", "status": "ready"}
