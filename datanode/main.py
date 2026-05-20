@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, Response
 from datanode import storage
 from datanode.config import DATANODE_URL, NAMENODE_URL
 from datanode.heartbeat import heartbeat_loop, send_heartbeat
+from datanode.replication import replicate_block
 
 logging.basicConfig(
     level=logging.INFO,
@@ -85,3 +86,14 @@ def delete_block(block_id: str) -> dict:
 def list_blocks() -> dict:
     blocks = storage.list_blocks()
     return {"blocks": blocks, "count": len(blocks)}
+
+
+@app.post("/blocks/{block_id}/replicate")
+def replicate(block_id: str, target_url: str) -> dict:
+    if not storage.block_exists(block_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
+    ok = replicate_block(block_id, target_url)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Replication failed")
+    logger.info("Replicated block %s -> %s", block_id, target_url)
+    return {"block_id": block_id, "target": target_url, "success": True}
