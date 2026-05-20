@@ -1,7 +1,7 @@
 import logging
 
-from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse, Response
 
 from datanode import storage
 from datanode.config import DATANODE_URL, NAMENODE_URL
@@ -37,3 +37,15 @@ async def startup() -> None:
 def health() -> dict:
     stats = storage.storage_stats()
     return {"status": "ok", "datanode_url": DATANODE_URL, **stats}
+
+
+@app.put("/blocks/{block_id}", status_code=status.HTTP_201_CREATED)
+async def put_block(block_id: str, request: Request) -> dict:
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty block data")
+    if storage.block_exists(block_id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Block already exists")
+    size = storage.write_block(block_id, data)
+    logger.info("PUT block: block_id=%s size=%d", block_id, size)
+    return {"block_id": block_id, "size": size}
