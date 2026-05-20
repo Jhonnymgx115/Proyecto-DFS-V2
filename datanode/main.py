@@ -49,3 +49,13 @@ async def put_block(block_id: str, request: Request) -> dict:
     size = storage.write_block(block_id, data)
     logger.info("PUT block: block_id=%s size=%d", block_id, size)
     return {"block_id": block_id, "size": size}
+
+
+@app.get("/blocks/{block_id}")
+def get_block(block_id: str) -> Response:
+    try:
+        data = storage.read_block(block_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
+    logger.info("GET block: block_id=%s size=%d", block_id, len(data))
+    return Response(content=data, media_type="application/octet-stream")
