@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import FastAPI, HTTPException, Request, status
@@ -5,6 +6,7 @@ from fastapi.responses import JSONResponse, Response
 
 from datanode import storage
 from datanode.config import DATANODE_URL, NAMENODE_URL
+from datanode.heartbeat import heartbeat_loop, send_heartbeat
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,7 +32,16 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 @app.on_event("startup")
 async def startup() -> None:
     storage.init_storage()
+    await send_heartbeat()
+    asyncio.create_task(heartbeat_loop())
     logger.info("DataNode started: url=%s namenode=%s", DATANODE_URL, NAMENODE_URL)
+
+
+@app.post("/report")
+async def report_now() -> dict:
+    ok = await send_heartbeat()
+    blocks = storage.list_blocks()
+    return {"reported": ok, "blocks": len(blocks)}
 
 
 @app.get("/health")
