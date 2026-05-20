@@ -59,3 +59,18 @@ def get_block(block_id: str) -> Response:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
     logger.info("GET block: block_id=%s size=%d", block_id, len(data))
     return Response(content=data, media_type="application/octet-stream")
+
+
+@app.delete("/blocks/{block_id}")
+def delete_block(block_id: str) -> dict:
+    deleted = storage.delete_block(block_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
+    logger.info("DELETE block: block_id=%s", block_id)
+    return {"block_id": block_id, "deleted": True}
+
+
+@app.get("/blocks")
+def list_blocks() -> dict:
+    blocks = storage.list_blocks()
+    return {"blocks": blocks, "count": len(blocks)}
