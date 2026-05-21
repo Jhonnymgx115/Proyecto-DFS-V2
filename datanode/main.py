@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse, Response
@@ -16,7 +17,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger("datanode.main")
 
-app = FastAPI(title="MiniHDFS DataNode")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    storage.init_storage()
+    await send_heartbeat()
+    task = asyncio.create_task(heartbeat_loop())
+    logger.info("DataNode started: url=%s namenode=%s", DATANODE_URL, NAMENODE_URL)
+    yield
+    task.cancel()
+
+
+app = FastAPI(title="MiniHDFS DataNode", lifespan=lifespan)
 
 
 @app.exception_handler(Exception)
@@ -30,12 +42,10 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     )
 
 
-@app.on_event("startup")
-async def startup() -> None:
-    storage.init_storage()
-    await send_heartbeat()
-    asyncio.create_task(heartbeat_loop())
-    logger.info("DataNode started: url=%s namenode=%s", DATANODE_URL, NAMENODE_URL)
+@app.get("/health")
+def health() -> dict:
+    stats = storage.storage_stats()
+    return {"status": "ok", "datanode_url": DATANODE_URL, **stats}
 
 
 @app.post("/report")
@@ -45,10 +55,10 @@ async def report_now() -> dict:
     return {"reported": ok, "blocks": len(blocks)}
 
 
-@app.get("/health")
-def health() -> dict:
-    stats = storage.storage_stats()
-    return {"status": "ok", "datanode_url": DATANODE_URL, **stats}
+@app.get("/blocks")
+def list_blocks() -> dict:
+    blocks = storage.list_blocks()
+    return {"blocks": blocks, "count": len(blocks)}
 
 
 @app.put("/blocks/{block_id}", status_code=status.HTTP_201_CREATED)
@@ -80,12 +90,6 @@ def delete_block(block_id: str) -> dict:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
     logger.info("DELETE block: block_id=%s", block_id)
     return {"block_id": block_id, "deleted": True}
-
-
-@app.get("/blocks")
-def list_blocks() -> dict:
-    blocks = storage.list_blocks()
-    return {"blocks": blocks, "count": len(blocks)}
 
 
 @app.post("/blocks/{block_id}/replicate")
