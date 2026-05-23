@@ -1,0 +1,103 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse, Response
+
+from datanode import storage
+from datanode.config import DATANODE_URL, NAMENODE_URL
+from datanode.heartbeat import heartbeat_loop, send_heartbeat
+from datanode.replication import replicate_block
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("datanode.main")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    storage.init_storage()
+    await send_heartbeat()
+    task = asyncio.create_task(heartbeat_loop())
+    logger.info("DataNode started: url=%s namenode=%s", DATANODE_URL, NAMENODE_URL)
+    yield
+    task.cancel()
+
+
+app = FastAPI(title="MiniHDFS DataNode", lifespan=lifespan)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    if hasattr(exc, "status_code"):
+        return JSONResponse(status_code=exc.status_code, content={"error": str(exc.detail)})
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"error": "Internal server error", "detail": str(exc)},
+    )
+
+
+@app.get("/health")
+def health() -> dict:
+    stats = storage.storage_stats()
+    return {"status": "ok", "datanode_url": DATANODE_URL, **stats}
+
+
+@app.post("/report")
+async def report_now() -> dict:
+    ok = await send_heartbeat()
+    blocks = storage.list_blocks()
+    return {"reported": ok, "blocks": len(blocks)}
+
+
+@app.get("/blocks")
+def list_blocks() -> dict:
+    blocks = storage.list_blocks()
+    return {"blocks": blocks, "count": len(blocks)}
+
+
+@app.put("/blocks/{block_id}", status_code=status.HTTP_201_CREATED)
+async def put_block(block_id: str, request: Request) -> dict:
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty block data")
+    if storage.block_exists(block_id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Block already exists")
+    size = storage.write_block(block_id, data)
+    logger.info("PUT block: block_id=%s size=%d", block_id, size)
+    return {"block_id": block_id, "size": size}
+
+
+@app.get("/blocks/{block_id}")
+def get_block(block_id: str) -> Response:
+    try:
+        data = storage.read_block(block_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
+    logger.info("GET block: block_id=%s size=%d", block_id, len(data))
+    return Response(content=data, media_type="application/octet-stream")
+
+
+@app.delete("/blocks/{block_id}")
+def delete_block(block_id: str) -> dict:
+    deleted = storage.delete_block(block_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
+    logger.info("DELETE block: block_id=%s", block_id)
+    return {"block_id": block_id, "deleted": True}
+
+
+@app.post("/blocks/{block_id}/replicate")
+def replicate(block_id: str, target_url: str) -> dict:
+    if not storage.block_exists(block_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
+    ok = replicate_block(block_id, target_url)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Replication failed")
+    logger.info("Replicated block %s -> %s", block_id, target_url)
+    return {"block_id": block_id, "target": target_url, "success": True}
