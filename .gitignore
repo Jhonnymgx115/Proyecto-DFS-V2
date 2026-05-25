@@ -1,0 +1,11 @@
+.env
+metadata.json
+!package.json
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.dfs_session.json
+namenode_metadata.json
+test_namenode_metadata.json
+datanode_storage/

@@ -1,0 +1,140 @@
+services:
+  namenode:
+    build:
+      context: .
+      dockerfile: namenode/Dockerfile
+    container_name: dfs-namenode
+    ports:
+      - "8000:8000"
+    environment:
+      NAMENODE_HOST: "0.0.0.0"
+      NAMENODE_PORT: "8000"
+      JWT_SECRET: "dev-secret-change-in-production"
+      JWT_EXPIRE_HOURS: "24"
+      BLOCK_SIZE_MB: "4"
+      REPLICATION_FACTOR: "2"
+      METADATA_FILE: "/data/namenode_metadata.json"
+      DATANODE_TTL_SECONDS: "90"
+    volumes:
+      - namenode_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - dfs-net
+
+  datanode1:
+    build:
+      context: .
+      dockerfile: datanode/Dockerfile
+    container_name: dfs-datanode1
+    ports:
+      - "8001:8001"
+    environment:
+      DATANODE_HOST: "0.0.0.0"
+      DATANODE_PORT: "8001"
+      DATANODE_URL: "http://datanode1:8001"
+      NAMENODE_URL: "http://namenode:8000"
+      STORAGE_DIR: "/data/blocks"
+      HEARTBEAT_INTERVAL_SECONDS: "15"
+    volumes:
+      - datanode1_data:/data/blocks
+    depends_on:
+      namenode:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    networks:
+      - dfs-net
+
+  datanode2:
+    build:
+      context: .
+      dockerfile: datanode/Dockerfile
+    container_name: dfs-datanode2
+    ports:
+      - "8002:8002"
+    environment:
+      DATANODE_HOST: "0.0.0.0"
+      DATANODE_PORT: "8002"
+      DATANODE_URL: "http://datanode2:8002"
+      NAMENODE_URL: "http://namenode:8000"
+      STORAGE_DIR: "/data/blocks"
+      HEARTBEAT_INTERVAL_SECONDS: "15"
+    volumes:
+      - datanode2_data:/data/blocks
+    depends_on:
+      namenode:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    networks:
+      - dfs-net
+
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    container_name: dfs-client
+    entrypoint: ["python", "-m", "client.cli"]
+    environment:
+      NAMENODE_URL: "http://namenode:8000"
+      DFS_CONFIRM_TIMEOUT_SECONDS: "90"
+      DFS_SESSION_FILE: "/data/.dfs_session.json"
+    volumes:
+      - ./tests:/app/tests:ro
+      - client_session:/data
+    depends_on:
+      namenode:
+        condition: service_healthy
+      datanode1:
+        condition: service_healthy
+      datanode2:
+        condition: service_healthy
+    profiles:
+      - tools
+    networks:
+      - dfs-net
+
+  test-e2e:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    entrypoint: ["bash", "/app/tests/test_dfs.sh"]
+    environment:
+      NAMENODE_URL: "http://namenode:8000"
+      DFS_CONFIRM_TIMEOUT_SECONDS: "90"
+    volumes:
+      - ./tests:/app/tests:ro
+    depends_on:
+      namenode:
+        condition: service_healthy
+      datanode1:
+        condition: service_healthy
+      datanode2:
+        condition: service_healthy
+    profiles:
+      - tools
+    networks:
+      - dfs-net
+
+volumes:
+  namenode_data:
+  datanode1_data:
+  datanode2_data:
+  client_session:
+
+networks:
+  dfs-net:
+    driver: bridge
