@@ -182,15 +182,7 @@ git push origin dev
 # Pull Request dev → main cuando la feature está completa
 ```
 
----
 
-## Ramas y contribuciones
-
-| Persona | Responsabilidad | Commits en dev |
-|---|---|---|
-| Persona 1 | NameNode, Auth, Metadata | 12 commits |
-| Persona 2 | DataNode, Replicación, Heartbeat | 12 commits |
-| Persona 3 | Cliente CLI, Docker, Tests, Rama fix | 11 + 6 commits |
 
 ---
 
@@ -216,6 +208,14 @@ git push origin dev
 
 ---
 
+##Uso de Inteligencia Artificail##
+al momento de realizar el namenode/ y el env. se utilizo cursor, configurando un agente de DFS y HDFS, este genero en un principio el primer paso para empezar el proyecto, sin embargo se encontraron
+multiples problemas, que fueron detalles desde lo tecnico sin revisar antes rutas generales; el namenode fue corregido y optimizado, los diferentes cambios fueron implementados y documentados por si solos
+en la Rama `fix`
+
+---
+
 ## Licencia
 
 Proyecto académico — Escuela de Ingenierías y Ciencias, 2026 - MIT.
+
