@@ -208,9 +208,11 @@ git push origin dev
 
 ---
 
-##Uso de Inteligencia Artificail##
-al momento de realizar el namenode/ y el env. se utilizo cursor, configurando un agente de DFS y HDFS, este genero en un principio el primer paso para empezar el proyecto, sin embargo se encontraron
-multiples problemas, que fueron detalles desde lo tecnico sin revisar antes rutas generales; el namenode fue corregido y optimizado, los diferentes cambios fueron implementados y documentados por si solos
+**Uso de Inteligencia Artificail**
+al momento de realizar el namenode/ y el env. se utilizo cursor, configurando un agente de DFS y HDFS, 
+este genero en un principio el primer paso para empezar el proyecto, sin embargo se encontraron
+multiples problemas, que fueron detalles desde lo tecnico sin revisar antes rutas generales; 
+el namenode fue corregido y optimizado, los diferentes cambios fueron implementados y documentados por si solos
 en la Rama `fix`
 
 ---
