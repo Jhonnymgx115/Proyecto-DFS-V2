@@ -38,7 +38,7 @@ Sistema de archivos distribuido minimalista basado en bloques, inspirado en HDFS
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/<org>/minidfs.git
+git clone https://github.com/Jhonnymgx115/Proyecto-DFS-V2.git
 cd minidfs
 
 # 2. Configurar variables de entorno
@@ -216,19 +216,6 @@ git push origin dev
 
 ---
 
-## Troubleshooting
-
-Ver [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) para soluciones a los errores más comunes:
-
-- JWT_SECRET no configurado → todos los endpoints retornan 500
-- Directorio `blocks/` inexistente → primer upload falla
-- Token guardado en ruta sin permisos → PermissionError en login
-- Heartbeat silencioso tras caída del NameNode → DataNodes aparecen muertos
-- OOM al subir archivos grandes → lectura completa en memoria
-- Replicación con timeout silencioso → upload parece exitoso pero solo hay 1 réplica
-
----
-
 ## Licencia
 
-Proyecto académico — Escuela de Ingenierías y Ciencias, 2026.
+Proyecto académico — Escuela de Ingenierías y Ciencias, 2026 - MIT.
