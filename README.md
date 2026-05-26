@@ -10,19 +10,19 @@ Sistema de archivos distribuido minimalista basado en bloques, inspirado en HDFS
                         │        NameNode          │
          ┌──────────────│     FastAPI :8000        │──────────────┐
          │  metadatos   │   JWT · Metadata · Auth  │  heartbeat   │
-         │              └─────────────────────────┘              │
-         ▼                                                        ▼
-   ┌───────────┐      ┌───────────────────────────────────────────────┐
-   │  Cliente  │─────▶│  DataNode 1   DataNode 2   DataNode 3        │
-   │  CLI      │      │  :8001        :8002         :8003             │
-   └───────────┘      │  ./blocks/    ./blocks/     ./blocks/         │
-                      └───────────────────────────────────────────────┘
+         │              └─────────────────────────┘        ------ │
+         ▼                                                 ▼
+   ┌───────────┐      ┌─────────────────────────────────────┐
+   │  Cliente  │─────▶│  DataNode 1   DataNode 2           │
+   │  CLI      │      │  :8001        :8002                │
+   └───────────┘      │  ./blocks/    ./blocks/            │
+                      └────────────────────────────────────┘
                               │              │
                               └── réplica ──▶│
 ```
 
 - **NameNode** — servidor central de metadatos. Gestiona el mapa archivo→bloques→DataNodes, autenticación JWT y asignación round-robin de bloques.
-- **DataNodes (×3)** — almacenan bloques binarios, envían heartbeat cada 30 s y replican bloques en pipeline.
+- **DataNodes (×2)** — almacenan bloques binarios, envían heartbeat cada 30 s y replican bloques en pipeline.
 - **Cliente CLI** — fragmenta archivos en bloques de 64 MB, interactúa con el NameNode para metadatos y transfiere bloques directamente a los DataNodes.
 
 ---
@@ -95,7 +95,7 @@ minidfs status
 | `BLOCK_SIZE_MB` | Tamaño de bloque en MB | `64` |
 | `REPLICATION_FACTOR` | Réplicas por bloque | `2` |
 | `NAMENODE_URL` | URL del NameNode | `http://namenode:8000` |
-| `DATANODE_ID` | Identificador del DataNode | `dn1` / `dn2` / `dn3` |
+| `DATANODE_ID` | Identificador del DataNode | `dn1` / `dn2` |
 | `HEARTBEAT_INTERVAL` | Segundos entre heartbeats | `30` |
 | `METADATA_FILE` | Ruta del archivo de metadatos | `namenode_metadata.json` |
 
@@ -105,7 +105,7 @@ minidfs status
 
 ```
 minidfs/
-├── namenode/              # Servidor de metadatos (Persona 1)
+├── namenode/              # Servidor de metadatos 
 │   ├── main.py            # FastAPI app, endpoints REST
 │   ├── auth.py            # JWT, bcrypt, dependencias de auth
 │   ├── metadata.py        # MetadataStore con persistencia JSON
@@ -113,14 +113,14 @@ minidfs/
 │   ├── schemas.py         # Modelos Pydantic
 │   ├── config.py          # Variables de entorno
 │   └── Dockerfile
-├── datanode/              # Nodo de almacenamiento (Persona 2)
+├── datanode/              # Nodo de almacenamiento 
 │   ├── main.py            # FastAPI app, endpoints REST
 │   ├── storage.py         # I/O de bloques con aiofiles
 │   ├── replication.py     # Pipeline push/pull entre DataNodes
 │   ├── heartbeat.py       # Background task de reporte
 │   ├── config.py
 │   └── Dockerfile
-├── client/                # CLI del usuario (Persona 3)
+├── client/                # CLI del usuario 
 │   ├── cli.py             # Comandos Typer
 │   ├── file_ops.py        # Lógica put/get con barra de progreso
 │   ├── auth_client.py     # Login y persistencia de token
@@ -198,7 +198,7 @@ git push origin dev
 | `GET /files/ls` | Listar archivos del usuario |
 | `GET /datanodes/status` | Estado de salud de los DataNodes |
 
-**DataNode** `http://localhost:8001` (también 8002, 8003)
+**DataNode** `http://localhost:8000` (también 8001, 8002)
 
 | Endpoint | Descripción |
 |---|---|
